@@ -1,4 +1,4 @@
-name: Publish Extension
+name: Package Extension
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
       - 'vscode-extension/**'
 
 jobs:
-  publish:
+  package:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,8 +19,12 @@ jobs:
       - name: Install vsce
         run: npm install -g @vscode/vsce
 
-      - name: Publish to marketplace
+      - name: Package VSIX
         working-directory: vscode-extension
-        run: vsce publish patch --no-dependencies
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: vsce package --no-dependencies
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: vscode-extension/*.vsix
