@@ -1,0 +1,6 @@
+node_modules/
+__pycache__/
+*.pyc
+*.snapshot
+*.vsix
+.DS_Store

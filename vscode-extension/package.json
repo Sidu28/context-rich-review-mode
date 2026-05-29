@@ -1,0 +1,52 @@
+{
+  "name": "claude-pr-review",
+  "displayName": "Claude PR Review",
+  "description": "Resume a Claude Code session from a PR branch — load the author's exact context and ask questions, read files, or make edits.",
+  "version": "0.1.0",
+  "publisher": "Sidu28",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sidu28/context-rich-review-mode"
+  },
+  "homepage": "https://github.com/Sidu28/context-rich-review-mode",
+  "bugs": {
+    "url": "https://github.com/Sidu28/context-rich-review-mode/issues"
+  },
+  "icon": "icon.png",
+  "categories": ["Other", "AI"],
+  "keywords": ["claude", "ai", "code review", "pr", "anthropic"],
+  "engines": { "vscode": "^1.85.0" },
+  "activationEvents": [],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "pr-review.loadSnapshot",
+        "title": "Claude PR Review: Load Snapshot…"
+      },
+      {
+        "command": "pr-review.loadSnapshotFile",
+        "title": "Claude PR Review: Load This Snapshot"
+      },
+      {
+        "command": "pr-review.setupCoder",
+        "title": "Claude PR Review: Setup Auto-Snapshot (Coder Mode)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "pr-review.loadSnapshotFile",
+          "when": "resourceExtname == .snapshot || resourceExtname == .jsonl",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        { "command": "pr-review.loadSnapshot" },
+        { "command": "pr-review.setupCoder" },
+        { "command": "pr-review.loadSnapshotFile", "when": "false" }
+      ]
+    }
+  }
+}

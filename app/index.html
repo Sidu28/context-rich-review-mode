@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob: 'unsafe-eval'; worker-src blob:; style-src 'self' 'unsafe-inline'" />
+  <title>PR Review</title>
+  <link rel="stylesheet" href="node_modules/xterm/css/xterm.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0d0d;
+      --surface: #141414;
+      --border: #2a2a2a;
+      --accent: #7c6af7;
+      --green: #3dd68c;
+      --red: #f56565;
+      --text: #e2e2f0;
+      --muted: #707070;
+      --radius: 10px;
+    }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      -webkit-app-region: no-drag;
+    }
+
+    /* title bar drag area */
+    .titlebar {
+      height: 36px;
+      -webkit-app-region: drag;
+      flex-shrink: 0;
+    }
+
+    /* ── setup pane ── */
+    #setupPane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0 40px 32px;
+      gap: 20px;
+      overflow: hidden;
+    }
+
+    .drop-zone {
+      width: 100%;
+      max-width: 520px;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 48px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      flex-shrink: 0;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(124,106,247,0.06);
+    }
+    .drop-zone .icon { font-size: 36px; margin-bottom: 12px; }
+    .drop-zone h2 { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+    .drop-zone p { font-size: 13px; color: var(--muted); }
+    .drop-zone .browse {
+      margin-top: 16px;
+      display: inline-block;
+      padding: 6px 16px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .drop-zone .browse:hover { border-color: var(--accent); color: var(--text); }
+
+    .card {
+      width: 100%;
+      max-width: 520px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .card.visible { display: flex; }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-header .branch {
+      font-size: 15px;
+      font-weight: 600;
+      font-family: 'SF Mono', 'Menlo', monospace;
+    }
+    .card-header .change-btn {
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      transition: color 0.15s;
+    }
+    .card-header .change-btn:hover { color: var(--text); }
+
+    .pr-title { font-size: 14px; color: var(--text); opacity: 0.9; }
+    .pr-link { color: var(--accent); text-decoration: none; font-size: 12px; }
+    .pr-link:hover { text-decoration: underline; }
+
+    .meta-row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .meta-chip {
+      font-size: 12px;
+      color: var(--muted);
+      background: rgba(255,255,255,0.04);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-family: 'SF Mono', 'Menlo', monospace;
+    }
+
+    .dir-row { display: flex; flex-direction: column; gap: 5px; }
+    .dir-label { font-size: 12px; color: var(--muted); }
+    .dir-input {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: 'SF Mono', 'Menlo', monospace;
+      font-size: 12px;
+      padding: 7px 10px;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .dir-input:focus { border-color: var(--accent); }
+
+    .btn-start {
+      width: 100%;
+      max-width: 520px;
+      padding: 14px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+      display: none;
+      flex-shrink: 0;
+    }
+    .btn-start:hover { background: #9080ff; }
+    .btn-start:active { opacity: 0.85; }
+    .btn-start.visible { display: block; }
+    .btn-start:disabled { opacity: 0.45; cursor: default; }
+
+    .status {
+      width: 100%;
+      max-width: 520px;
+      font-size: 13px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      display: none;
+      gap: 8px;
+      align-items: flex-start;
+      flex-shrink: 0;
+    }
+    .status.visible { display: flex; }
+    .status.ok  { background: rgba(61,214,140,0.1);  color: var(--green); border: 1px solid rgba(61,214,140,0.25); }
+    .status.err { background: rgba(245,101,101,0.1); color: var(--red);   border: 1px solid rgba(245,101,101,0.25); }
+    .status.info { background: rgba(124,106,247,0.1); color: #a090ff;    border: 1px solid rgba(124,106,247,0.2); }
+    .status-body { flex: 1; }
+
+    /* ── terminal pane ── */
+    #terminalPane {
+      display: none;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+    }
+    #terminalPane.visible { display: flex; }
+
+    .term-header {
+      height: 44px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+      flex-shrink: 0;
+      -webkit-app-region: drag;
+    }
+    .term-header * { -webkit-app-region: no-drag; }
+
+    .term-branch {
+      font-family: 'SF Mono', 'Menlo', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .term-pr {
+      font-size: 13px;
+      color: var(--muted);
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .term-pr a { color: var(--accent); text-decoration: none; }
+    .term-pr a:hover { text-decoration: underline; }
+
+    .btn-new-review {
+      padding: 5px 12px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      flex-shrink: 0;
+    }
+    .btn-new-review:hover { border-color: var(--accent); color: var(--text); }
+
+    /* ── work area: sidebar + right panel ── */
+    .work-area {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── sidebar ── */
+    .sidebar {
+      width: 240px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+    }
+
+    .sidebar-header {
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px 0 14px;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-header span {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .sidebar-header button {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 2px 4px;
+      border-radius: 3px;
+      line-height: 1;
+    }
+    .sidebar-header button:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+
+    .file-tree {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+    .file-tree::-webkit-scrollbar { width: 5px; }
+    .file-tree::-webkit-scrollbar-track { background: transparent; }
+    .file-tree::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .tree-row {
+      display: flex;
+      align-items: center;
+      height: 24px;
+      padding-right: 8px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 13px;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .tree-row:hover { background: rgba(255,255,255,0.05); }
+    .tree-row.selected { background: rgba(124,106,247,0.18); color: white; }
+
+    .tree-row .arrow {
+      width: 16px;
+      flex-shrink: 0;
+      text-align: center;
+      font-size: 10px;
+      color: var(--muted);
+      transition: transform 0.1s;
+    }
+    .tree-row.expanded .arrow { transform: rotate(90deg); }
+    .tree-row .tree-icon {
+      width: 16px;
+      flex-shrink: 0;
+      text-align: center;
+      font-size: 13px;
+      margin-right: 4px;
+    }
+    .tree-row .tree-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── resize handles ── */
+    .resize-handle-v {
+      width: 4px;
+      flex-shrink: 0;
+      cursor: col-resize;
+      background: transparent;
+      transition: background 0.15s;
+      z-index: 10;
+    }
+    .resize-handle-v:hover, .resize-handle-v.dragging { background: var(--accent); }
+
+    .resize-handle-h {
+      height: 4px;
+      flex-shrink: 0;
+      cursor: row-resize;
+      background: transparent;
+      transition: background 0.15s;
+      z-index: 10;
+    }
+    .resize-handle-h:hover, .resize-handle-h.dragging { background: var(--accent); }
+
+    /* ── right panel ── */
+    .right-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── editor panel ── */
+    .editor-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 80px;
+    }
+    .editor-panel.hidden { display: none; }
+
+    .editor-tabs {
+      display: flex;
+      align-items: stretch;
+      height: 36px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      flex-shrink: 0;
+    }
+    .editor-tabs::-webkit-scrollbar { height: 0; }
+
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 10px 0 14px;
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+      border-right: 1px solid var(--border);
+      white-space: nowrap;
+      flex-shrink: 0;
+      min-width: 80px;
+      max-width: 200px;
+    }
+    .tab:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+    .tab.active { color: var(--text); background: var(--surface); border-bottom: 2px solid var(--accent); }
+    .tab .tab-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+    .tab .tab-dirty { color: var(--accent); font-size: 10px; }
+    .tab .tab-close {
+      font-size: 14px;
+      line-height: 1;
+      color: var(--muted);
+      border-radius: 3px;
+      padding: 1px 2px;
+    }
+    .tab .tab-close:hover { color: var(--red); background: rgba(245,101,101,0.15); }
+
+    #monacoContainer {
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── terminal panel ── */
+    .terminal-panel {
+      flex: 0 0 320px;
+      overflow: hidden;
+      padding: 4px 0 0 4px;
+      min-height: 80px;
+    }
+
+    /* Make xterm fill the container */
+    .terminal-panel .xterm,
+    .terminal-panel .xterm-viewport,
+    .terminal-panel .xterm-screen { height: 100% !important; }
+
+    /* When editor is hidden, terminal expands to fill */
+    .editor-panel.hidden ~ .resize-handle-h { display: none; }
+    .editor-panel.hidden ~ .terminal-panel { flex: 1; }
+  </style>
+</head>
+<body>
+  <div class="titlebar"></div>
+
+  <!-- ── Setup pane ── -->
+  <div id="setupPane">
+    <div class="drop-zone" id="dropZone">
+      <div class="icon">📎</div>
+      <h2>Drop a .snapshot file here</h2>
+      <p>Generated by <code>git push</code> on the PR branch</p>
+      <span class="browse" id="browseBtn">Browse…</span>
+    </div>
+
+    <div class="card" id="card">
+      <div class="card-header">
+        <span class="branch" id="metaBranch"></span>
+        <span class="change-btn" id="changeBtn">Change file</span>
+      </div>
+      <div class="pr-title" id="metaPrTitle" style="display:none"></div>
+      <div class="meta-row" id="metaChips"></div>
+      <div class="dir-row">
+        <label class="dir-label" for="dirInput">Project directory (reviewer's local path)</label>
+        <input class="dir-input" id="dirInput" type="text" spellcheck="false" />
+      </div>
+    </div>
+
+    <div class="status" id="status">
+      <div class="status-body" id="statusBody"></div>
+    </div>
+
+    <button class="btn-start" id="btnStart">Start Review Session</button>
+  </div>
+
+  <!-- ── Terminal pane ── -->
+  <div id="terminalPane">
+    <div class="term-header">
+      <span class="term-branch" id="termBranch"></span>
+      <span class="term-pr" id="termPr"></span>
+      <button class="btn-new-review" id="btnNewReview">New Review</button>
+    </div>
+
+    <div class="work-area" id="workArea">
+      <!-- Sidebar -->
+      <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <span id="sidebarTitle">EXPLORER</span>
+          <button id="btnCollapseAll" title="Collapse all">&#8862;</button>
+        </div>
+        <div class="file-tree" id="fileTree"></div>
+      </div>
+
+      <!-- Vertical resize handle -->
+      <div class="resize-handle-v" id="resizeV"></div>
+
+      <!-- Right panel: editor + terminal stacked -->
+      <div class="right-panel" id="rightPanel">
+        <div class="editor-panel hidden" id="editorPanel">
+          <div class="editor-tabs" id="editorTabs"></div>
+          <div id="monacoContainer"></div>
+        </div>
+        <!-- Horizontal resize handle -->
+        <div class="resize-handle-h" id="resizeH"></div>
+        <div class="terminal-panel" id="terminalContainer"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="node_modules/xterm/lib/xterm.js"></script>
+  <script src="node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+  <script src="node_modules/monaco-editor/min/vs/loader.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

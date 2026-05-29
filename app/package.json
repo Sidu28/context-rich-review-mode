@@ -1,0 +1,20 @@
+{
+  "name": "pr-review",
+  "version": "0.1.0",
+  "description": "Load a Claude Code session snapshot for PR review",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "postinstall": "electron-rebuild -f -w node-pty"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
+    "electron": "^31.0.0"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.55.1",
+    "node-pty": "^1.1.0",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0"
+  }
+}
