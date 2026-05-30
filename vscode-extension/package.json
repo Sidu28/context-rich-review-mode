@@ -2,8 +2,8 @@
   "name": "claude-pr-review",
   "displayName": "Claude PR Review",
   "description": "Resume a Claude Code session from a PR branch — load the author's exact context and ask questions, read files, or make edits.",
-  "version": "0.1.0",
-  "publisher": "Sidu28",
+  "version": "0.1.1",
+  "publisher": "kachapah",
   "license": "MIT",
   "repository": {
     "type": "git",
