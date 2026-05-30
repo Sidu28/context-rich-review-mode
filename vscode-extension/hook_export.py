@@ -50,10 +50,9 @@ def main():
         log("export.py not found")
         return
 
+    # No --session flag: export all sessions for the branch so the snapshot
+    # accumulates across multiple Claude sessions on the same branch.
     cmd = [sys.executable, str(export_script), "--quiet", "--output-root"]
-    if session_id:
-        cmd += ["--session", session_id]
-
     result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
     log(f"export.py exit={result.returncode} stdout={result.stdout!r} stderr={result.stderr!r}")
 

@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -139,18 +140,43 @@ def load_entries(path: Path) -> list[dict]:
     return entries
 
 
-def build_snapshot(session_meta: dict, git_info: dict, pr_info: dict) -> dict:
-    entries = load_entries(session_meta["path"])
+def build_snapshot(session_metas: list, git_info: dict, pr_info: dict) -> dict:
+    # Sort sessions chronologically by their earliest timestamp
+    sorted_metas = sorted(session_metas, key=lambda m: (m["last_timestamp"] or ""))
+    total = len(sorted_metas)
+    all_entries = []
+
+    for i, meta in enumerate(sorted_metas):
+        entries = load_entries(meta["path"])
+        if not entries:
+            continue
+        if total > 1:
+            label = (
+                f"[Session 1 of {total} — start of work on this branch]"
+                if i == 0
+                else f"[Session {i + 1} of {total} — developer started a new Claude session]"
+            )
+            all_entries.append({
+                "type": "user",
+                "message": {"role": "user", "content": label},
+                "uuid": str(uuid.uuid4()),
+                "timestamp": entries[0].get("timestamp"),
+                "cwd": meta["cwd"],
+            })
+        all_entries.extend(entries)
+
+    original_cwd = sorted_metas[0]["cwd"] if sorted_metas else ""
     return {
         "version": "1",
         "exported_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "git": git_info,
         "pr": pr_info,
         "session": {
-            "original_id": session_meta["session_id"],
-            "original_cwd": session_meta["cwd"],
-            "entry_count": len(entries),
-            "entries": entries,
+            "original_ids": [m["session_id"] for m in sorted_metas],
+            "original_cwd": original_cwd,
+            "session_count": total,
+            "entry_count": len(all_entries),
+            "entries": all_entries,
         },
     }
 
@@ -202,7 +228,7 @@ def main():
         if not meta:
             print(f"Error: session {pinned_session} not found or unreadable.")
             sys.exit(1)
-        candidates = [meta]
+        candidates = [meta]  # single pinned session
     else:
         candidates = find_sessions_for_branch(project_hash, branch)
         if not candidates:
@@ -221,23 +247,24 @@ def main():
             print(f"     entries={m['entry_count']}  last={m['last_timestamp'][:10] if m['last_timestamp'] else '?'}{marker}")
         return
 
-    # If multiple candidates, show them and use the best automatically
-    best = candidates[0]
+    # Use all sessions for the branch (or just the pinned one)
     if len(candidates) > 1:
-        log(f"\nFound {len(candidates)} sessions for '{branch}'. Using best match:")
-        log(f"  {best['session_id']}  ({best['entry_count']} entries, last active {best['last_timestamp'][:10] if best['last_timestamp'] else '?'})")
-        log(f"  (use --list to see all, --session <id> to override)\n")
+        log(f"\nFound {len(candidates)} sessions for '{branch}' — merging all into snapshot:")
+        for m in candidates:
+            log(f"  {m['session_id']}  ({m['entry_count']} entries, last active {m['last_timestamp'][:10] if m['last_timestamp'] else '?'})")
+        log(f"  (use --session <id> to pin a single session)\n")
     else:
-        log(f"\nSession: {best['session_id']}  ({best['entry_count']} entries)")
+        m = candidates[0]
+        log(f"\nSession: {m['session_id']}  ({m['entry_count']} entries)")
 
     # PR metadata (optional, don't fail if gh isn't available)
     pr_info = get_pr_info()
     if pr_info:
         log(f"PR:      #{pr_info.get('number')} — {pr_info.get('title')}")
 
-    # Build snapshot
+    # Build snapshot from all sessions
     log("\nBuilding snapshot...")
-    snapshot = build_snapshot(best, git_info, pr_info)
+    snapshot = build_snapshot(candidates, git_info, pr_info)
 
     if not output_path:
         safe_branch = branch.replace("/", "-")
